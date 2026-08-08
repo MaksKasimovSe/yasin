@@ -2,17 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatMoney } from '@/lib/money';
-
-const STATUS_COPY = {
-  new: { label: 'Sent to the kitchen', hint: 'The staff have your order.' },
-  preparing: { label: 'Being prepared', hint: 'Your food is on the stove.' },
-  ready: { label: 'Ready', hint: 'Coming to your table now.' },
-  served: { label: 'Served', hint: 'Enjoy your meal!' },
-  cancelled: { label: 'Cancelled', hint: 'Please speak to a staff member.' },
-};
+import { LANGUAGES, normalizeLang, t } from './i18n';
 
 export default function MenuClient({ restaurant, table, menu }) {
   const storageKey = `qrmenu:cart:${restaurant.slug}:${table.code}`;
+  const langStorageKey = 'qrmenu:lang';
 
   const [cart, setCart] = useState({});
   const [sheet, setSheet] = useState(null); // null | 'review' | 'placed'
@@ -21,9 +15,33 @@ export default function MenuClient({ restaurant, table, menu }) {
   const [error, setError] = useState('');
   const [placedOrder, setPlacedOrder] = useState(null);
   const [activeCategory, setActiveCategory] = useState(menu[0]?.id ?? null);
+  const [lang, setLang] = useState('en');
+  const [orderType, setOrderType] = useState('dine_in'); // 'dine_in' | 'takeout'
 
   const sectionRefs = useRef({});
   const money = useCallback((amount) => formatMoney(amount, restaurant), [restaurant]);
+  const tr = useCallback((path, vars) => t(lang, path, vars), [lang]);
+
+  /* Pick up a saved language, or fall back to the browser's, on first load. */
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(langStorageKey);
+      setLang(normalizeLang(saved || navigator.language));
+    } catch {
+      /* private mode — default 'en' stands */
+    }
+  }, []);
+  function getLocalized(field, obj, lang) {
+    return obj[`${field}_${lang}`] || obj[`${field}_en`] || '';
+  }
+  function changeLang(next) {
+    setLang(next);
+    try {
+      localStorage.setItem(langStorageKey, next);
+    } catch {
+      /* storage unavailable; selection still works for this visit */
+    }
+  }
 
   /* Restore an in-progress cart so a refresh mid-order isn't punishing. */
   useEffect(() => {
@@ -119,12 +137,13 @@ export default function MenuClient({ restaurant, table, menu }) {
           tableCode: table.code,
           note,
           cart: lines.map((line) => ({ itemId: line.item.id, qty: line.qty })),
+          orderType,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not send the order');
 
-      setPlacedOrder({ id: data.orderId, total: data.total, status: 'new' });
+      setPlacedOrder({ id: data.orderId, total: data.total, status: 'new', orderType });
       setCart({});
       setNote('');
       setSheet('placed');
@@ -144,7 +163,31 @@ export default function MenuClient({ restaurant, table, menu }) {
               <h1>{restaurant.name}</h1>
               {restaurant.tagline && <div className="tagline">{restaurant.tagline}</div>}
             </div>
-            <span className="table-badge">{table.label}</span>
+            <div className="row" style={{ alignItems: 'center', gap: 8 }}>
+              <select
+                aria-label={tr('language')}
+                value={lang}
+                onChange={(event) => changeLang(event.target.value)}
+                style={{
+                  border: '1px solid #56382D',
+                  borderRadius: 999,
+                  padding: '7px 12px',
+                  background: '#56382D',
+                  color: '#FFFFFF',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  outline: 'none',
+                }}
+              >
+                {LANGUAGES.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.flag} {option.label}
+                  </option>
+                ))}
+              </select>
+              <span className="table-badge">{table.label}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -159,7 +202,7 @@ export default function MenuClient({ restaurant, table, menu }) {
               aria-current={activeCategory === category.id}
               onClick={() => scrollToCategory(category.id)}
             >
-              {category.name}
+              {getLocalized("name", category, lang)}
             </button>
           ))}
         </div>
@@ -174,7 +217,7 @@ export default function MenuClient({ restaurant, table, menu }) {
             }}
             data-category-id={category.id}
           >
-            <h2 className="cat-title">{category.name}</h2>
+            <h2 className="cat-title">{getLocalized("name", category, lang)}</h2>
             {category.items.map((item) => {
               const qty = cart[item.id] ?? 0;
               return (
@@ -189,18 +232,20 @@ export default function MenuClient({ restaurant, table, menu }) {
                     />
                   )}
                   <div className="grow">
-                    <h4>{item.name}</h4>
-                    {item.description && <p>{item.description}</p>}
+                    <h4>{getLocalized("name", item, lang)}</h4>
+                    {getLocalized("description", item, lang) && (
+                      <p>{getLocalized("description", item, lang)}</p>
+                    )}
                     <span className="price">{money(item.price)}</span>
                   </div>
                   <div style={{ flex: 'none' }}>
                     {qty > 0 ? (
                       <div className="qty">
-                        <button type="button" onClick={() => setQty(item.id, qty - 1)} aria-label={`Remove one ${item.name}`}>
+                        <button type="button" onClick={() => setQty(item.id, qty - 1)} aria-label={tr('a11y.removeOne', { name: getLocalized("name", item, lang) })}>
                           −
                         </button>
                         <span>{qty}</span>
-                        <button type="button" onClick={() => setQty(item.id, qty + 1)} aria-label={`Add one ${item.name}`}>
+                        <button type="button" onClick={() => setQty(item.id, qty + 1)} aria-label={tr('a11y.addOne', { name: getLocalized("name", item, lang) })}>
                           +
                         </button>
                       </div>
@@ -209,7 +254,7 @@ export default function MenuClient({ restaurant, table, menu }) {
                         type="button"
                         className="add-btn"
                         onClick={() => setQty(item.id, 1)}
-                        aria-label={`Add ${item.name}`}
+                        aria-label={tr('a11y.addItem', { name: getLocalized("name", item, lang) })}
                       >
                         +
                       </button>
@@ -232,12 +277,12 @@ export default function MenuClient({ restaurant, table, menu }) {
             <div className="grow">
               <div style={{ fontWeight: 700 }}>{money(total)}</div>
               <div className="tiny muted">
-                {count} {count === 1 ? 'item' : 'items'}
-                {serviceFee > 0 && ` · incl. ${restaurant.service_charge_pct}% service`}
+                {tr('cart.item', { count })}
+                {serviceFee > 0 && ` · ${tr('cart.inclService', { pct: restaurant.service_charge_pct })}`}
               </div>
             </div>
             <button type="button" className="btn" onClick={() => setSheet('review')}>
-              Review order
+              {tr('cart.reviewOrder')}
             </button>
           </div>
         </div>
@@ -253,9 +298,9 @@ export default function MenuClient({ restaurant, table, menu }) {
         >
           <div className="sheet">
             <div className="spread" style={{ marginBottom: 8 }}>
-              <h2 style={{ margin: 0 }}>Your order</h2>
+              <h2 style={{ margin: 0 }}>{tr('sheet.yourOrder')}</h2>
               <button type="button" className="btn ghost sm" onClick={() => setSheet(null)}>
-                Close
+                {tr('sheet.close')}
               </button>
             </div>
 
@@ -263,15 +308,15 @@ export default function MenuClient({ restaurant, table, menu }) {
               <div className="sheet-line" key={line.item.id}>
                 <div className="row">
                   <div className="qty">
-                    <button type="button" onClick={() => setQty(line.item.id, line.qty - 1)} aria-label={`Remove one ${line.item.name}`}>
+                    <button type="button" onClick={() => setQty(line.item.id, line.qty - 1)} aria-label={tr('a11y.removeOne', { name: getLocalized('name', line.item, lang) })}>
                       −
                     </button>
                     <span>{line.qty}</span>
-                    <button type="button" onClick={() => setQty(line.item.id, line.qty + 1)} aria-label={`Add one ${line.item.name}`}>
+                    <button type="button" onClick={() => setQty(line.item.id, line.qty + 1)} aria-label={tr('a11y.addOne', { name: getLocalized('name', line.item, lang) })}>
                       +
                     </button>
                   </div>
-                  <span>{line.item.name}</span>
+                  <span>{getLocalized('name', line.item, lang)}</span>
                 </div>
                 <strong>{money(line.item.price * line.qty)}</strong>
               </div>
@@ -280,31 +325,49 @@ export default function MenuClient({ restaurant, table, menu }) {
             {serviceFee > 0 && (
               <>
                 <div className="sheet-line muted">
-                  <span>Subtotal</span>
+                  <span>{tr('sheet.subtotal')}</span>
                   <span>{money(subtotal)}</span>
                 </div>
                 <div className="sheet-line muted">
-                  <span>Service ({restaurant.service_charge_pct}%)</span>
+                  <span>{tr('sheet.service', { pct: restaurant.service_charge_pct })}</span>
                   <span>{money(serviceFee)}</span>
                 </div>
               </>
             )}
 
             <div className="sheet-line sheet-total">
-              <span>Total</span>
+              <span>{tr('sheet.total')}</span>
               <span>{money(total)}</span>
             </div>
 
             <div style={{ margin: '16px 0' }}>
+              <label className="lbl">{tr('orderType.label')}</label>
+              <div className="row" style={{ gap: 8 }}>
+                {['dine_in', 'takeout'].map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className={orderType === type ? 'btn sm' : 'btn ghost sm'}
+                    aria-pressed={orderType === type}
+                    onClick={() => setOrderType(type)}
+                    style={{ flex: 1 }}
+                  >
+                    {tr(type === 'dine_in' ? 'orderType.dineIn' : 'orderType.takeout')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ margin: '16px 0' }}>
               <label className="lbl" htmlFor="order-note">
-                Anything the kitchen should know?
+                {tr('sheet.noteLabel')}
               </label>
               <textarea
                 id="order-note"
                 className="field"
                 rows={2}
                 maxLength={400}
-                placeholder="No onions, extra bread…"
+                placeholder={tr('sheet.notePlaceholder')}
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
               />
@@ -318,10 +381,10 @@ export default function MenuClient({ restaurant, table, menu }) {
               disabled={placing || lines.length === 0}
               onClick={placeOrder}
             >
-              {placing ? 'Sending…' : `Send order · ${money(total)}`}
+              {placing ? tr('sheet.sending') : tr('sheet.sendOrder', { total: money(total) })}
             </button>
             <p className="tiny muted center" style={{ marginBottom: 0 }}>
-              You pay at the table as usual — this only sends the order to the staff.
+              {tr('sheet.payNote')}
             </p>
           </div>
         </div>
@@ -331,20 +394,20 @@ export default function MenuClient({ restaurant, table, menu }) {
         <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Order sent">
           <div className="sheet center">
             <div className="success-mark">✓</div>
-            <h2 style={{ marginBottom: 4 }}>Order #{placedOrder.id} sent</h2>
+            <h2 style={{ marginBottom: 4 }}>{tr('placed.orderSent', { id: placedOrder.id })}</h2>
             <p className="muted" style={{ marginTop: 0 }}>
-              {table.label} · {money(placedOrder.total)}
+              {tr(placedOrder.orderType === 'takeout' ? 'orderType.takeout' : 'orderType.dineIn')} · {table.label} · {money(placedOrder.total)}
             </p>
 
             <div className="card" style={{ padding: 16, margin: '18px 0', textAlign: 'left' }}>
               <div style={{ fontWeight: 700, marginBottom: 2 }}>
-                {STATUS_COPY[placedOrder.status]?.label ?? 'Sent'}
+                {tr(`status.${placedOrder.status}.label`)}
               </div>
-              <div className="tiny muted">{STATUS_COPY[placedOrder.status]?.hint}</div>
+              <div className="tiny muted">{tr(`status.${placedOrder.status}.hint`)}</div>
             </div>
 
             <button type="button" className="btn block ghost" onClick={() => setSheet(null)}>
-              Order something else
+              {tr('placed.orderSomethingElse')}
             </button>
           </div>
         </div>

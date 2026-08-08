@@ -6,6 +6,7 @@ import {
   getOrder,
   listActiveOrders,
   listRecentOrders,
+  ORDER_TYPES,
 } from '@/lib/db';
 import { currentStaffRestaurant } from '@/lib/auth';
 import { allowOrder } from '@/lib/rateLimit';
@@ -21,13 +22,15 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Malformed request' }, { status: 400 });
   }
 
-  const { slug, tableCode, cart, note } = body ?? {};
+  const { slug, tableCode, cart, note, orderType } = body ?? {};
   if (!Array.isArray(cart) || cart.length === 0) {
     return NextResponse.json({ error: 'Your order is empty' }, { status: 400 });
   }
   if (cart.length > 60) {
     return NextResponse.json({ error: 'That order is too large to send' }, { status: 400 });
   }
+
+  const type = ORDER_TYPES.includes(orderType) ? orderType : 'dine_in';
 
   const restaurant = getRestaurantBySlug(String(slug ?? ''));
   if (!restaurant) return NextResponse.json({ error: 'Restaurant not found' }, { status: 404 });
@@ -44,7 +47,7 @@ export async function POST(request) {
   }
 
   try {
-    const orderId = createOrder(restaurant, table.id, cart, note);
+    const orderId = createOrder(restaurant, table.id, cart, note, type);
     const order = getOrder(orderId);
     return NextResponse.json({ orderId, total: order.total, status: order.status }, { status: 201 });
   } catch (err) {

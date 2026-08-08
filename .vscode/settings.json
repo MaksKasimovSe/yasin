@@ -1,0 +1,19 @@
+{
+    "sqltools.useNodeRuntime": true,
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "database": "${workspaceFolder:qrmenu}/data/qrmenu.db",
+            "name": "name",
+            "group": "name"
+        },
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "database": "${workspaceFolder:qrmenu}/data/qrmenu.db",
+            "name": "query",
+            "group": "query"
+        }
+    ]
+}

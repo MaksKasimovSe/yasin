@@ -212,7 +212,24 @@ export default function StaffBoard({ restaurant, initialActive, initialRecent })
                 {tickets.map((order) => (
                   <article key={order.id} className={`card ticket is-${order.status}`}>
                     <div className="spread">
-                      <span className="ticket-table">{order.table_label}</span>
+                      <span className="ticket-table">
+                        {order.table_label}
+                        {order.order_type === 'takeout' && (
+                          <span
+                            className="tiny"
+                            style={{
+                              marginLeft: 8,
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              background: 'var(--accent)',
+                              color: '#fff',
+                              fontWeight: 700,
+                            }}
+                          >
+                            На вынос
+                          </span>
+                        )}
+                      </span>
                       <span className="tiny muted">#{order.id}</span>
                     </div>
                     <div className="tiny muted">{elapsed(order.created_at, now)}</div>
