@@ -26,6 +26,17 @@ function slugify(input) {
     .slice(0, 40);
 }
 
+const LANGS = ['en', 'ru', 'uz', 'ko', 'zh'];
+
+/** Pulls name_en, name_ru, ... (or description_*) out of a submitted form. */
+function localizedFields(formData, field, maxLen) {
+  const out = {};
+  for (const code of LANGS) {
+    out[code] = String(formData.get(`${field}_${code}`) ?? '').trim().slice(0, maxLen);
+  }
+  return out;
+}
+
 /* ------------------------------- menu ------------------------------- */
 
 export async function addCategory(formData) {
@@ -37,8 +48,28 @@ export async function addCategory(formData) {
     .prepare('SELECT COALESCE(MAX(sort), -1) AS max FROM categories WHERE restaurant_id = ?')
     .get(restaurant.id);
 
-  db.prepare('INSERT INTO categories (restaurant_id, name, sort) VALUES (?, ?, ?)')
-    .run(restaurant.id, name.slice(0, 60), max + 1);
+  const names = localizedFields(formData, 'name', 60);
+
+  db.prepare(
+    `INSERT INTO categories (restaurant_id, name, sort, name_en, name_ru, name_uz, name_ko, name_zh)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(restaurant.id, name.slice(0, 60), max + 1, names.en, names.ru, names.uz, names.ko, names.zh);
+  refresh();
+}
+
+export async function updateCategory(formData) {
+  const restaurant = await requireRestaurant();
+  const id = Number(formData.get('id'));
+  const name = String(formData.get('name') ?? '').trim();
+  if (!name) return;
+
+  const names = localizedFields(formData, 'name', 60);
+
+  db.prepare(
+    `UPDATE categories
+        SET name = ?, name_en = ?, name_ru = ?, name_uz = ?, name_ko = ?, name_zh = ?
+      WHERE id = ? AND restaurant_id = ?`
+  ).run(name.slice(0, 60), names.en, names.ru, names.uz, names.ko, names.zh, id, restaurant.id);
   refresh();
 }
 
@@ -64,16 +95,25 @@ export async function addItem(formData) {
     .prepare('SELECT COALESCE(MAX(sort), -1) AS max FROM items WHERE category_id = ?')
     .get(categoryId);
 
+  const names = localizedFields(formData, 'name', 80);
+  const descriptions = localizedFields(formData, 'description', 200);
+
   db.prepare(
-    `INSERT INTO items (restaurant_id, category_id, name, description, price, sort)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO items (
+       restaurant_id, category_id, name, description, price, sort,
+       name_en, name_ru, name_uz, name_ko, name_zh,
+       description_en, description_ru, description_uz, description_ko, description_zh
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     restaurant.id,
     categoryId,
     name.slice(0, 80),
     String(formData.get('description') ?? '').trim().slice(0, 200),
     parseMoney(formData.get('price'), restaurant),
-    max + 1
+    max + 1,
+    names.en, names.ru, names.uz, names.ko, names.zh,
+    descriptions.en, descriptions.ru, descriptions.uz, descriptions.ko, descriptions.zh
   );
   refresh();
 }
@@ -82,15 +122,22 @@ export async function updateItem(formData) {
   const restaurant = await requireRestaurant();
   const id = Number(formData.get('id'));
 
+  const names = localizedFields(formData, 'name', 80);
+  const descriptions = localizedFields(formData, 'description', 200);
+
   db.prepare(
     `UPDATE items
-        SET name = ?, description = ?, price = ?, image_url = ?
+        SET name = ?, description = ?, price = ?, image_url = ?,
+            name_en = ?, name_ru = ?, name_uz = ?, name_ko = ?, name_zh = ?,
+            description_en = ?, description_ru = ?, description_uz = ?, description_ko = ?, description_zh = ?
       WHERE id = ? AND restaurant_id = ?`
   ).run(
     String(formData.get('name') ?? '').trim().slice(0, 80),
     String(formData.get('description') ?? '').trim().slice(0, 200),
     parseMoney(formData.get('price'), restaurant),
     String(formData.get('imageUrl') ?? '').trim().slice(0, 500),
+    names.en, names.ru, names.uz, names.ko, names.zh,
+    descriptions.en, descriptions.ru, descriptions.uz, descriptions.ko, descriptions.zh,
     id,
     restaurant.id
   );

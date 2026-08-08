@@ -7,6 +7,7 @@ import {
   deleteCategory,
   deleteItem,
   toggleItem,
+  updateCategory,
   updateItem,
 } from '../actions';
 
@@ -15,6 +16,14 @@ function priceValue(price, restaurant) {
   const decimals = restaurant.currency_decimals ?? 0;
   return decimals > 0 ? (price / 10 ** decimals).toFixed(decimals) : String(price);
 }
+
+const LANGS = [
+  { code: 'en', label: 'English' },
+  { code: 'ru', label: 'Русский' },
+  { code: 'uz', label: 'Oʻzbekcha' },
+  { code: 'ko', label: '한국어' },
+  { code: 'zh', label: '中文' },
+];
 
 function AvailabilitySwitch({ item }) {
   const [available, setAvailable] = useState(Boolean(item.available));
@@ -37,54 +46,96 @@ function AvailabilitySwitch({ item }) {
 }
 
 function ItemRow({ item, restaurant }) {
+  const formId = `item-form-${item.id}`;
   return (
-    <tr style={{ opacity: item.available ? 1 : 0.55 }}>
-      <td style={{ width: 52 }}>
-        <AvailabilitySwitch item={item} />
-      </td>
-      <td colSpan={4} style={{ padding: 0 }}>
-        <form action={updateItem}>
-          <input type="hidden" name="id" value={item.id} />
-          <input type="hidden" name="imageUrl" value={item.image_url} />
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0' }}>
-            <input
-              className="editable"
-              name="name"
-              defaultValue={item.name}
-              aria-label="Item name"
-              style={{ flex: '2 1 180px', fontWeight: 600 }}
-            />
-            <input
-              className="editable"
-              name="description"
-              defaultValue={item.description}
-              placeholder="Short description"
-              aria-label="Description"
-              style={{ flex: '3 1 220px' }}
-            />
-            <input
-              className="editable"
-              name="price"
-              defaultValue={priceValue(item.price, restaurant)}
-              inputMode="decimal"
-              aria-label="Price"
-              style={{ flex: '0 0 110px', textAlign: 'right' }}
-            />
-            <button className="btn ghost sm" type="submit">
-              Сохранить
+    <>
+      <tr style={{ opacity: item.available ? 1 : 0.55 }}>
+        <td style={{ width: 52 }}>
+          <AvailabilitySwitch item={item} />
+        </td>
+        <td colSpan={4} style={{ padding: 0 }}>
+          <form id={formId} action={updateItem}>
+            <input type="hidden" name="id" value={item.id} />
+            <input type="hidden" name="imageUrl" value={item.image_url} />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0' }}>
+              <input
+                className="editable"
+                name="name"
+                defaultValue={item.name}
+                aria-label="Item name"
+                style={{ flex: '2 1 180px', fontWeight: 600 }}
+              />
+              <input
+                className="editable"
+                name="description"
+                defaultValue={item.description}
+                placeholder="Short description"
+                aria-label="Description"
+                style={{ flex: '3 1 220px' }}
+              />
+              <input
+                className="editable"
+                name="price"
+                defaultValue={priceValue(item.price, restaurant)}
+                inputMode="decimal"
+                aria-label="Price"
+                style={{ flex: '0 0 110px', textAlign: 'right' }}
+              />
+              <button className="btn ghost sm" type="submit">
+                Сохранить
+              </button>
+            </div>
+          </form>
+        </td>
+        <td style={{ width: 44 }}>
+          <form action={deleteItem}>
+            <input type="hidden" name="id" value={item.id} />
+            <button className="btn ghost sm" type="submit" aria-label={`Удалить ${item.name}`}>
+              ✕
             </button>
-          </div>
-        </form>
-      </td>
-      <td style={{ width: 44 }}>
-        <form action={deleteItem}>
-          <input type="hidden" name="id" value={item.id} />
-          <button className="btn ghost sm" type="submit" aria-label={`Удалить ${item.name}`}>
-            ✕
-          </button>
-        </form>
-      </td>
-    </tr>
+          </form>
+        </td>
+      </tr>
+      <tr style={{ opacity: item.available ? 1 : 0.55 }}>
+        <td colSpan={6} style={{ padding: '0 0 8px', border: 0 }}>
+          <details>
+            <summary className="tiny muted" style={{ cursor: 'pointer', padding: '2px 0' }}>
+              🌐 Переводы (5 языков)
+            </summary>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 8,
+                padding: '8px 0 4px',
+              }}
+            >
+              {LANGS.map((lang) => (
+                <div key={lang.code} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label className="tiny muted">{lang.label}</label>
+                  <input
+                    className="field"
+                    form={formId}
+                    name={`name_${lang.code}`}
+                    defaultValue={item[`name_${lang.code}`] || ''}
+                    placeholder={`Название (${lang.label})`}
+                    aria-label={`Item name (${lang.label})`}
+                  />
+                  <input
+                    className="field"
+                    form={formId}
+                    name={`description_${lang.code}`}
+                    defaultValue={item[`description_${lang.code}`] || ''}
+                    placeholder={`Описание (${lang.label})`}
+                    aria-label={`Description (${lang.label})`}
+                  />
+                </div>
+              ))}
+            </div>
+          </details>
+        </td>
+      </tr>
+    </>
   );
 }
 
@@ -102,15 +153,53 @@ export default function MenuEditor({ restaurant, menu }) {
         </div>
       )}
 
-      {menu.map((category) => (
+      {menu.map((category) => {
+        const catFormId = `category-form-${category.id}`;
+        return (
         <section key={category.id} style={{ marginBottom: 30 }}>
-          <div className="spread" style={{ marginBottom: 8 }}>
-            <h2 style={{ fontSize: 18, margin: 0 }}>
-              {category.name}{' '}
-              <span className="tiny muted" style={{ fontWeight: 400 }}>
-                · {category.items.length} items
-              </span>
-            </h2>
+          <div className="spread" style={{ marginBottom: 8, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <h2 style={{ fontSize: 18, margin: 0 }}>
+                {category.name}{' '}
+                <span className="tiny muted" style={{ fontWeight: 400 }}>
+                  · {category.items.length} items
+                </span>
+              </h2>
+              <details>
+                <summary className="tiny muted" style={{ cursor: 'pointer', padding: '4px 0' }}>
+                  🌐 Название на других языках
+                </summary>
+                <form
+                  id={catFormId}
+                  action={updateCategory}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                    gap: 8,
+                    padding: '8px 0 4px',
+                    alignItems: 'end',
+                  }}
+                >
+                  <input type="hidden" name="id" value={category.id} />
+                  <input type="hidden" name="name" value={category.name} />
+                  {LANGS.map((lang) => (
+                    <div key={lang.code} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label className="tiny muted">{lang.label}</label>
+                      <input
+                        className="field"
+                        name={`name_${lang.code}`}
+                        defaultValue={category[`name_${lang.code}`] || ''}
+                        placeholder={`Категория (${lang.label})`}
+                        aria-label={`Category name (${lang.label})`}
+                      />
+                    </div>
+                  ))}
+                  <button className="btn ghost sm" type="submit" form={catFormId}>
+                    Сохранить переводы
+                  </button>
+                </form>
+              </details>
+            </div>
             <form action={deleteCategory}>
               <input type="hidden" name="id" value={category.id} />
               <button className="btn ghost sm" type="submit">
@@ -161,7 +250,8 @@ export default function MenuEditor({ restaurant, menu }) {
             </table>
           </div>
         </section>
-      ))}
+        );
+      })}
 
       <div className="card" style={{ padding: 18 }}>
         <form action={addCategory} className="row">
